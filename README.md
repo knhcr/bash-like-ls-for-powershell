@@ -1,7 +1,7 @@
-# bash like ls 
+# bash like ls for powershell
 
 ## What is this?
-  * `ls` function for powershell with bash's `ls` like output.
+  * `ls` function for powershell with bash's `ls` like output. 
     - you can use `-1`, `-c`, `-f` options.
     - with `-l` option, simply returns powershell's default `ls` (`Get-ChildItem`) result .
 
