@@ -10,7 +10,7 @@ $ANSI_RESET = "$ANSI_ESC[0m"
 $BashLikeLsColorMap = @{
     "Directory"    = "$ANSI_ESC[94m" # 明るい青
     "Executable"   = "$ANSI_ESC[32m" # 緑
-    "SymbolicLink" = "$ANSI_ESC[36m" # シアン
+    "SymbolicLink" = "$ANSI_ESC[96m" # 明るいシアン
     "Other"        = $ANSI_RESET     # reset color and styles
 }
 
