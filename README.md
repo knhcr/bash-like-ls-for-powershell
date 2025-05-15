@@ -45,7 +45,7 @@ so returns an array of FileSystemInfo objects.
 When used with -1 option, this function returns a string array of the
 file names.
 
-Version : 1.0.1
+Version : 1.0.2
 Author: knhcr
 ```
 
