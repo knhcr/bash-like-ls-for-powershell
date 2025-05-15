@@ -12,6 +12,8 @@
 
 ## Description
 ```
+bash-like-ls
+
 Options:
 -1     list one file per line
 -f,F   append indicator (one of */@) to entries
@@ -22,15 +24,14 @@ Options:
 
 Notice:
 For redirect or pipe, you must use with the pass through option (-L)
-or -1 option. Basically this function returns nothing, because this
-function internally calls 'Write-Host' instead of 'Write-Output'.
-When used with -1 (without -c) option, this function returns a string
-array of the file names.
-When used with -l option, this function simply calls Get-ChildItem, so
-returns an array of FileSystemInfo objects.
+or -1 without -F, -C option. 
+When used with -L option, this function simply calls Get-ChildItem,
+so returns an array of FileSystemInfo objects.
+When used with -1 option, this function returns a string array of the
+file names.
 
-Author:
-knhcr
+Version : 1.0.1
+Author: knhcr
 ```
 
 
