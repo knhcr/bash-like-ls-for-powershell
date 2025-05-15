@@ -10,6 +10,21 @@
 ![ls-1](./docs/imgs/003.png)
 
 
+## Update History
+* v1.0.2
+  - C option color for symbolic link changed : cyan -> light cyan
+  - bug fix
+    + error when -1 option used fixed,
+    + bleeding C option color to type identifier fixed.
+
+* v1.0.1
+  - changed the item display order when showing multiple columns
+    to prioritize vertical direction, similar to the behavior of ls in bash.
+
+* v1.0.0
+  - initial version
+
+
 ## Description
 ```
 bash-like-ls
