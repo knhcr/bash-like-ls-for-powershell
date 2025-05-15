@@ -3,11 +3,15 @@ $BashLikeLsExecutables = @(
     ".js", ".py", ".rb", ".pl", ".cs", ".vbs"
 )
 
+$BashLikeLsSpaceLength = 2
+
+$ANSI_ESC = [char]0x1B
+$ANSI_RESET = "$ANSI_ESC[0m"
 $BashLikeLsColorMap = @{
-    "Directory" = [ConsoleColor]::DarkCyan
-    "Executable" = [ConsoleColor]::Green
-    "SymbolicLink" = [ConsoleColor]::Cyan
-    "Other" = $Host.UI.RawUI.ForegroundColor # default font color
+    "Directory"    = "$ANSI_ESC[94m" # 明るい青
+    "Executable"   = "$ANSI_ESC[32m" # 緑
+    "SymbolicLink" = "$ANSI_ESC[36m" # シアン
+    "Other"        = $ANSI_RESET     # reset color and styles
 }
 
 $BashLikeLsTypeIdMap = @{
@@ -41,6 +45,8 @@ Author: knhcr
 "@
 
 # -----------------------------------------------------------------------------------------------------------------
+$BashLikeLsDebugFlag = $false
+
 enum FileType {
     Directory
     Executable
@@ -109,7 +115,7 @@ Function Bash-Like-LS {
     }
 
     
-    # 表示幅計算
+    # 各アイテムの表示幅を計算
     function Get-StringDisplayWidth {
         param([string]$text)
         $width = 0
@@ -139,6 +145,63 @@ Function Bash-Like-LS {
         return $width
     }
 
+    # 行列数計算 (ret : 整形後の行数, 整形後の列数, 各列の幅(padding 含まず))
+    function Get-LineCount($displayWidths, $windowWidth, $padding=$null) {
+        if($padding -eq $null){ $padding = $script:BashLikeLsSpaceLength }
+
+        $rows = $displayWidths.Count # 整形後の行数 [return]
+        $cols = 1                    # 整形後の列数 [return]
+        $colWidths = @()             # 整形後の各列の幅 [return]
+
+
+        # 指定された列数で並べた場合の横の長さを計算
+        function calc-width($displayWidths, $padding, $cols){
+            $ret = 0
+            $maxWidths = @() # 各列の最大幅
+            $perLines = [math]::Ceiling($displayWidths.Count / $cols) # 1列当たりの要素数
+            for ($i = 0; $i -lt $cols; $i++) {
+                # 縦の列毎に最大長を取得
+                $startIdx = $i * $perLines
+                $endIdx = [math]::Min($i * $perLines + $perLines -1, $displayWidths.Count - 1)
+
+                #if($script:BashLikeLsDebugFlag){
+                #    Write-Host "[$startIdx`:$endIdx]"
+                #}
+
+                $max = ($displayWidths[$startIdx..$endIdx] | Measure-Object -Maximum).Maximum
+                $maxWidths += $max
+            }
+            # padding も含めた1行当たりの幅 を計算
+            $sum = ($maxWidths | Measure-Object -Sum).Sum
+            $ret = $sum + ($cols - 1) * $padding
+            return @($ret, $maxWidths)
+        }
+
+        
+        # window 幅を超えるまで列数を増やして幅を計算し、はみ出る直前の列数を取得
+        $max = ($displayWidths| Measure-Object -Maximum).Maximum
+        $colWidths = @($max)
+        while($true){
+            $nextCols = $cols + 1
+
+            #if($script:BashLikeLsDebugFlag){
+            #    Write-Host "nextCols : $nextCols"
+            #}
+
+            if ($nextCols -gt $displayWidths.Count) { # 1行で全て納まる場合ここ
+                break
+            }
+            $tmpWidth, $tmpColWidths = calc-width $displayWidths $padding $nextCols
+            if ($tmpWidth -gt $windowWidth) {
+                break
+            }
+            $colWidths = $tmpColWidths
+            $cols = $nextCols
+        }
+        $rows = [math]::Ceiling($displayWidths.Count / $cols)
+        return @($rows, $cols, $colWidths)
+    }
+
     # 直接の引数文字列 $args をパース
     $lsArgs = @{
         "path" = "."  # path
@@ -157,132 +220,102 @@ Function Bash-Like-LS {
     }
 
     try {
-        # ls -l : pwsh のデフォルト ls
+        # ls -l : pwsh のデフォルト ls にパススルー
         if ($lsArgs["longFormat"]) {
             Get-ChildItem -Path $lsArgs["path"] -ErrorAction Stop
             return
         } 
         
-        # ls -1 : 1行ずつ
-        if ($lsArgs["onePerLine"]) {
-            $items = Get-ChildItem -Path $lsArgs["path"] -ErrorAction Stop
-            if ($lsArgs["showFileType"]) {
-                # -f あり
-                if (-not $lsArgs["setColor"]){
-                    # ls -1f
-                    foreach ($item in $items) {
-                        $type = Get-FileType -item $item
-                        $displayName = $item.Name + $script:BashLikeLsTypeIdMap[$type.ToString()]
-                        Write-Output $displayName
-                    }
-                    return
-                }else{
-                    # ls -1fc
-                    foreach ($item in $items) {
-                        $type = Get-FileType -item $item
-                        $Host.UI.RawUI.ForegroundColor = $script:BashLikeLsColorMap[$type.ToString()]
-                        Write-Host -NoNewline $item.Name
-                        $Host.UI.RawUI.ForegroundColor = $script:BashLikeLsColorMap["Other"] # Default Color
-                        Write-Host $script:BashLikeLsTypeIdMap[$type.ToString()]
-                    }
-                    return
-                }
-            } else {
-                # -f 無し
-                if (-not $lsArgs["setColor"]){
-                    # ls -1
-                    $items | Select-Object -ExpandProperty Name
-                    return
-                }else{
-                    # ls -1c
-                    foreach ($item in $items) {
-                        $type = Get-FileType -item $item
-                        $Host.UI.RawUI.ForegroundColor = $script:BashLikeLsColorMap[$type.ToString()]
-                        Write-Host -NoNewline $item.Name
-                        $Host.UI.RawUI.ForegroundColor = $script:BashLikeLsColorMap["Other"] # Default Color
-                        Write-Host
-                    }
-                    return
-                }
-            }
-        }
-        
-        # 以下 ls (複数カラム表示)
-
+        # -- メインの処理 --
         $items = Get-ChildItem -Path $lsArgs["path"] -ErrorAction Stop
+        if($script:BashLikeLsDebugFlag){
+            Write-Host "items count : "$items.Count
+        }
+
         if ($items.Count -eq 0) { return }
-        
-        # ファイル名配列 (width 計算のためにここで生成する必要あり)
-        $names = @()
-        $itemTypes = @()
-        foreach ($item in $items) {
-            # -f or -c のどちらかがある場合は type も取得
-            if ($lsArgs["showFileType"] -or $lsArgs["setColor"]) {
+
+        $displayNames = @()
+        $fileTypes = @()
+
+        # f も c も無し : type 不要
+        if ((-not $lsArgs["showFileType"]) -and (-not $lsArgs["setColor"])) {
+            $displayNames = $items | Select-Object -ExpandProperty Name
+        }
+        # f か c 有り : type 取得
+        else {
+            foreach ($item in $items) {
+                # ファイルタイプ取得
                 $type = Get-FileType -item $item
-                $itemTypes += $type
-            }
-            if ($lsArgs["showFileType"]) {
-                # ls -f
-                $names += $item.Name + $script:BashLikeLsTypeIdMap[$type.ToString()]
-            } else {
-                # ls
-                $names += $item.Name
-            }
-        }
-        
-        $width = $Host.UI.RawUI.WindowSize.Width
-        
-        # 各ファイル名の表示幅を取得
-        $displayWidths = @($names | ForEach-Object { Get-StringDisplayWidth $_ })
-        $maxWidth = ($displayWidths | Measure-Object -Maximum).Maximum
-        $colWidth = $maxWidth + 2
-        
-        # 列数を計算
-        $cols = [math]::Max(1, [math]::Floor($width / $colWidth))
-        
-        # 表示
-        for ($i = 0; $i -lt $names.Count; $i++) {
-            $name = $names[$i]
-            $displayWidth = $displayWidths[$i]
-            $padding = $colWidth - $displayWidth
-            
-            if ($lsArgs["setColor"]) {
-                # カラー表示
-                $type = $itemTypes[$i]
-                
+                $fileTypes += $type
+
+                # f の場合タイプ識別子を追加
                 if ($lsArgs["showFileType"]) {
-                    # ls -fc: ファイル名のみを色付けし、タイプ記号はデフォルト色
-                    $baseName = $items[$i].Name
-                    $typeSymbol = $script:BashLikeLsTypeIdMap[$type.ToString()]
-                    
-                    # ファイル名を色付け
-                    $Host.UI.RawUI.ForegroundColor = $script:BashLikeLsColorMap[$type.ToString()]
-                    Write-Host -NoNewline $baseName
-                    
-                    # タイプ記号はデフォルト色
-                    $Host.UI.RawUI.ForegroundColor = $script:BashLikeLsColorMap["Other"]
-                    Write-Host -NoNewline $typeSymbol
-                } else {
-                    # ls -c: 通常の色付け
-                    $Host.UI.RawUI.ForegroundColor = $script:BashLikeLsColorMap[$type.ToString()]
-                    Write-Host -NoNewline $name
+                    $displayNames += $item.Name + $script:BashLikeLsTypeIdMap[$type.ToString()]
                 }
-                
-                # 色をデフォルトに戻す
-                $Host.UI.RawUI.ForegroundColor = $script:BashLikeLsColorMap["Other"]
-            } else {
-                # 色付けなし
-                Write-Host -NoNewline $name
-            }
-            
-            if ($padding -gt 0) {
-                Write-Host -NoNewline (" " * $padding)
-            }
-            
-            if (($i + 1) % $cols -eq 0 -or $i -eq $names.Count - 1) { 
-                Write-Host ""
             }
         }
+
+        # -1 で表示
+        if ($lsArgs["onePerLine"]) {
+            foreach ($name in $displayNames) {
+                if ($lsArgs["setColor"]) {
+                    $type = $fileTypes[$i]
+                    if ($type -ne $script:FileType.Other) {
+                        $name = $script:BashLikeLsColorMap[$type.ToString()] + $name + $script:ANSI_RESET
+                    }
+                }
+                Write-Output $name
+            }
+            return
+        }
+
+        # -1 無し : 複数カラム表示
+        # 行と列を計算
+        $windowWidth = $Host.UI.RawUI.WindowSize.Width
+        $displayWidths = @($displayNames | ForEach-Object { Get-StringDisplayWidth $_ })
+        $rows, $cols, $colWidths = Get-LineCount $displayWidths $windowWidth
+
+        if($script:BashLikeLsDebugFlag){
+            Write-Host "(row, col) = ($rows, $cols)"
+            Write-Host "column widths = " $colWidths
+            Write-Host "display names = " $displayNames
+            Write-Host "each width = " $displayWidths
+        }
+
+        # 出力ラインを生成
+        $lines = @()
+        for ($i = 0; $i -lt $rows; $i++) {
+            $lines += ,@() # ,を付けないと lines.push([]) ではなく lines.extend([]) になる
+        }
+
+        $tmpX = 0
+        $tmpY = 0
+        for ($idx=0; $idx -lt $displayNames.Count; $idx++ ){
+            $name = $displayNames[$idx]
+            $tmpX = [math]::Floor($idx / $rows) # 列
+            $tmpY = $idx - ($tmpX * $rows) # 行
+            
+            # padding
+            $name += (" " * ($colWidths[$tmpX] - $displayWidths[$idx]) -join "")
+
+            # color
+            if ($lsArgs["setColor"]) {
+                $type = $fileTypes[$idx]
+                if ($type -ne $script:FileType.Other) {
+                    $name = $script:BashLikeLsColorMap[$type.ToString()] + $name + $script:ANSI_RESET
+                }
+            }
+
+            $lines[$tmpY] += $name
+        }
+
+        # 出力
+        $space = (" " * $script:BashLikeLsSpaceLength) -join ""
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            $tmp = $lines[$i] -join $space
+            Write-Output $tmp
+        }
+        return
     }
     catch [System.Management.Automation.ItemNotFoundException] {
         Write-Error -Message "Get-ChildItem: $_" -Category ObjectNotFound -ErrorAction Continue
