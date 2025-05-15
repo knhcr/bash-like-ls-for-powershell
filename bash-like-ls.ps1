@@ -40,7 +40,7 @@ so returns an array of FileSystemInfo objects.
 When used with -1 option, this function returns a string array of the
 file names.
 
-Version : 1.0.1
+Version : 1.0.2
 Author: knhcr
 "@
 
@@ -257,11 +257,13 @@ Function Bash-Like-LS {
 
         # -1 で表示
         if ($lsArgs["onePerLine"]) {
-            foreach ($name in $displayNames) {
+            for ($idx=0; $idx -lt $displayNames.Count; $idx++) {
+                $name = $displayNames[$idx]
                 if ($lsArgs["setColor"]) {
-                    $type = $fileTypes[$i]
+                    $type = $fileTypes[$idx]
                     if ($type -ne $script:FileType.Other) {
-                        $name = $script:BashLikeLsColorMap[$type.ToString()] + $name + $script:ANSI_RESET
+                        # タイプ識別子を色をデフォルトに戻すため作り直す
+                        $name = $script:BashLikeLsColorMap[$type.ToString()] + $items[$idx].Name + $script:ANSI_RESET + $script:BashLikeLsTypeIdMap[$type.ToString()]
                     }
                 }
                 Write-Output $name
@@ -295,16 +297,17 @@ Function Bash-Like-LS {
             $tmpX = [math]::Floor($idx / $rows) # 列
             $tmpY = $idx - ($tmpX * $rows) # 行
             
-            # padding
-            $name += (" " * ($colWidths[$tmpX] - $displayWidths[$idx]) -join "")
-
             # color
             if ($lsArgs["setColor"]) {
                 $type = $fileTypes[$idx]
                 if ($type -ne $script:FileType.Other) {
-                    $name = $script:BashLikeLsColorMap[$type.ToString()] + $name + $script:ANSI_RESET
+                    # タイプ識別子を色をデフォルトに戻すため作り直す
+                    $name = $script:BashLikeLsColorMap[$type.ToString()] + $items[$idx].Name + $script:ANSI_RESET + $script:BashLikeLsTypeIdMap[$type.ToString()]
                 }
             }
+
+            # padding
+            $name += (" " * ($colWidths[$tmpX] - $displayWidths[$idx]) -join "")
 
             $lines[$tmpY] += $name
         }
